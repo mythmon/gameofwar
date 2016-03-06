@@ -1,0 +1,14 @@
+[package]
+authors = ["Mike Cooper <mythmon@gmail.com>"]
+name = "gameofwar"
+version = "0.1.0"
+
+[[bin]]
+name = "gameofwar"
+
+[dependencies]
+piston = "0.18.0"
+piston2d-graphics = "0.13.0"
+piston2d-opengl_graphics = "0.23.0"
+pistoncore-glutin_window = "0.21.0"
+rand = "0.3.14"
