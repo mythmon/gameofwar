@@ -2,102 +2,103 @@ use std::iter::Iterator;
 use std::num::Zero;
 
 use rand::{self, Rng};
+use utils::Indexer;
 
 pub struct GameOfLife {
-    pub width: usize,
-    pub height: usize,
-    pub cells: Vec<Vec<Cell>>,
-}
-
-trait Indexer: PartialOrd + Zero {
-    fn to_usize(self) -> usize;
-}
-
-impl Indexer for isize {
-    fn to_usize(self) -> usize {
-        self as usize
-    }
-}
-
-impl Indexer for usize {
-    fn to_usize(self) -> usize {
-        self
-    }
-}
-
-impl Indexer for i32 {
-    fn to_usize(self) -> usize {
-        self as usize
-    }
+    width: usize,
+    height: usize,
+    pub cells: Cells,
 }
 
 impl GameOfLife {
     pub fn new(width: usize, height: usize) -> GameOfLife {
-        assert!(width >= 2 && height >= 2);
-
-        let mut cells = Vec::with_capacity(width);
-        for x in 0..width {
-            cells.push(Vec::with_capacity(height));
-            for _ in 0..height {
-                cells[x].push(Cell::new());
-            }
-        }
 
         GameOfLife {
             width: width,
             height: height,
-            cells: cells,
+            cells: Cells::new(width, height),
         }
     }
 
     pub fn tick(&mut self) {
-        let mut new_map = self.cells.clone();
+        let mut new_cells = self.cells.clone();
+
         for x in 0..self.width {
             for y in 0..self.height {
                 let population: u8 = {
-                    self.get_neighbors(x, y)
+                    self.cells.get_neighbors(x, y)
                         .into_iter()
                         .map(|c| c.alive as u8)
                         .sum()
                 };
 
-                let cell = &mut self.get(x, y).unwrap();
-                if cell.alive && population < 2 {
-                    new_map[x][y].alive = false;
-                } else if cell.alive && population >= 4 {
-                    new_map[x][y].alive = false;
+                let cell = &mut self.cells.get(x, y).unwrap();
+                if cell.alive && (population < 2 || population > 3) {
+                    new_cells.get_mut(x, y).unwrap().alive = false;
                 } else if !cell.alive && population == 3 {
-                    new_map[x][y].alive = true;
+                    new_cells.get_mut(x, y).unwrap().alive = true;
                 }
             }
         }
-        self.cells = new_map;
+        self.cells = new_cells;
     }
 
-    fn get<'a, T: Indexer>(&'a self, x: T, y: T) -> Option<&'a Cell> {
-        if x < T::zero() || y < T::zero() {
-            return None
-        }
-        let x = x.to_usize();
-        let y = y.to_usize();
-        if x >= self.width || y >= self.height {
-            None
-        } else {
-            Some(&self.cells[x][y])
+    #[allow(dead_code)]
+    pub fn clear(&mut self) {
+        for x in 0..self.width {
+            for y in 0..self.height {
+                self.cells.get_mut(x, y).unwrap().alive = false;
+            }
         }
     }
 
-    fn get_mut<'a, T: Indexer>(&'a mut self, x: T, y: T) -> Option<&'a mut Cell> {
-        if x < T::zero() || y < T::zero() {
-            return None
+    #[allow(dead_code)]
+    pub fn randomize(&mut self) {
+        let mut rng = rand::thread_rng();
+        for x in 0..self.width {
+            for y in 0..self.height {
+                self.cells.get_mut(x, y).unwrap().alive = rng.gen::<f64>() < 0.4;
+            }
         }
-        let x = x.to_usize();
-        let y = y.to_usize();
-        if x >= self.width || y >= self.height {
-            None
-        } else {
-            Some(&mut self.cells[x][y])
+    }
+
+    #[allow(dead_code)]
+    pub fn glider(&mut self) {
+        self.clear();
+        let indexes = [(2, 1), (3, 2), (3, 3), (2, 3), (1, 3)];
+        for &(x, y) in &indexes {
+            self.cells.get_mut(x, y).unwrap().alive = true;
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Cell {
+    pub alive: bool,
+}
+
+impl Cell {
+    fn new() -> Cell {
+        Cell { alive: false }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Cells {
+    cells: Vec<Vec<Cell>>,
+}
+
+impl Cells {
+    pub fn new(width: usize, height: usize) -> Cells {
+        assert!(width >= 2 && height >= 2);
+
+        let cells = (0..width)
+                    .map(|_| (0..height)
+                             .map(|_| Cell::new())
+                             .collect())
+                    .collect();
+
+        Cells { cells: cells }
     }
 
     fn get_neighbors(&self, cx: usize, cy: usize) -> Vec<&Cell> {
@@ -110,9 +111,8 @@ impl GameOfLife {
                 if x == cx && y == cy {
                     continue;
                 }
-                match self.get(x, y) {
-                    Some(c) => neighbors.push(c),
-                    None => (),
+                if let Some(c) = self.get(x, y) {
+                    neighbors.push(c);
                 }
             }
         }
@@ -122,49 +122,50 @@ impl GameOfLife {
         if len != 3 && len != 5 && len != 8 {
             panic!(format!("Unexpected number of neighbors. Expected 3, 5, or 8. Got {} at ({}, {})", len, cx, cy));
         }
+
         neighbors
     }
 
-    pub fn iter_cells(&self) -> BoardCellIterator {
-        BoardCellIterator::new(&self.cells)
+    pub fn iter(&self) -> CellsIterator {
+        CellsIterator::new(&self.cells)
     }
 
-    pub fn clear(&mut self) {
-        for x in 0..self.width {
-            for y in 0..self.height {
-                self.get_mut(x, y).unwrap().alive = false;
-            }
+    pub fn get<T: Indexer>(&self, x: T, y: T) -> Option<&Cell> {
+        if x < T::zero() || y < T::zero() {
+            return None;
+        }
+        let x = x.as_usize();
+        let y = y.as_usize();
+        if x >= self.cells.len() || y >= self.cells[0].len() {
+            None
+        } else {
+            Some(&self.cells[x][y])
         }
     }
 
-    #[allow(dead_code)]
-    pub fn randomize(&mut self) {
-        let mut rng = rand::thread_rng();
-        for x in 0..self.width {
-            for y in 0..self.height {
-                self.get_mut(x, y).unwrap().alive = rng.gen::<f64>() < 0.4;
-            }
+    pub fn get_mut<T: Indexer>(&mut self, x: T, y: T) -> Option<&mut Cell> {
+        if x < T::zero() || y < T::zero() {
+            return None;
         }
-    }
-
-    pub fn glider(&mut self) {
-        self.clear();
-        let indexes = [(2, 1), (3, 2), (3, 3), (2, 3), (1, 3)];
-        for &(x, y) in &indexes {
-            self.get_mut(x, y).unwrap().alive = true;
+        let x = x.as_usize();
+        let y = y.as_usize();
+        if x >= self.cells.len() || y >= self.cells[0].len() {
+            None
+        } else {
+            Some(&mut self.cells[x][y])
         }
     }
 }
 
-pub struct BoardCellIterator<'a> {
+pub struct CellsIterator<'a> {
     x: usize,
     y: usize,
     cells: &'a Vec<Vec<Cell>>,
 }
 
-impl<'a> BoardCellIterator<'a> {
-    fn new(cells: &'a Vec<Vec<Cell>>) -> BoardCellIterator<'a> {
-        BoardCellIterator {
+impl<'a> CellsIterator<'a> {
+    fn new(cells: &'a Vec<Vec<Cell>>) -> CellsIterator<'a> {
+        CellsIterator {
             x: 0,
             y: 0,
             cells: cells,
@@ -172,7 +173,7 @@ impl<'a> BoardCellIterator<'a> {
     }
 }
 
-impl<'a> Iterator for BoardCellIterator<'a> {
+impl<'a> Iterator for CellsIterator<'a> {
     type Item = (usize, usize, &'a Cell);
 
     fn next(&mut self) -> Option<(usize, usize, &'a Cell)> {
@@ -194,18 +195,8 @@ impl<'a> Iterator for BoardCellIterator<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
+        // TODO: calculate number of remaining cells, not total
         let size = self.cells.len() * self.cells[0].len();
-        (size, Some(size))
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Cell {
-    pub alive: bool,
-}
-
-impl Cell {
-    fn new() -> Cell {
-        Cell { alive: false }
+        (0, Some(size))
     }
 }
