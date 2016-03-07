@@ -1,4 +1,4 @@
-#![feature(iter_arith, zero_one)]
+#![feature(zero_one)]
 
 extern crate piston;
 extern crate graphics;
@@ -27,7 +27,6 @@ impl App {
     fn new(opengl: OpenGL) -> App {
         let mut game = conway::GameOfLife::new(100, 100);
         game.randomize();
-        // game.glider();
 
         App {
             gl: GlGraphics::new(opengl),
@@ -38,11 +37,13 @@ impl App {
     }
 
     fn render(&mut self, args: &RenderArgs) {
-        const ALIVE: [f32; 4] = [0.9, 0.9, 0.9, 1.0];
+        const ALIVE_RED: [f32; 4] = [0.9, 0.2, 0.2, 1.0];
+        const ALIVE_BLUE: [f32; 4] = [0.2, 0.2, 0.9, 1.0];
+        const ALIVE_NEUTRAL: [f32; 4] = [0.9, 0.9, 0.9, 1.0];
         const DEAD: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
         const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
-        let size = 4.0;
+        let size = 10.0;
         let square = graphics::rectangle::square(0.0, 0.0, size);
         let cells = self.game.cells.iter();
 
@@ -53,7 +54,12 @@ impl App {
             for (x, y, cell) in cells {
                 let transform = ctx.transform.trans(x as f64 * size + 20.0,
                                                     y as f64 * size + 20.0);
-                let color = if cell.alive { ALIVE } else { DEAD };
+                let color = match (cell.alive, cell.team) {
+                    (true, conway::Team::Red) => ALIVE_RED,
+                    (true, conway::Team::Blue) => ALIVE_BLUE,
+                    (true, conway::Team::Neutral) => ALIVE_NEUTRAL,
+                    (false, _) => DEAD,
+                };
                 graphics::rectangle(color, square, transform, gl);
             }
         });

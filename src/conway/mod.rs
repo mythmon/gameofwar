@@ -1,7 +1,8 @@
 use std::iter::Iterator;
 use std::num::Zero;
+use std::collections::HashMap;
 
-use rand::{self, Rng};
+use rand::{self, Rng, Rand};
 use utils::Indexer;
 
 pub struct GameOfLife {
@@ -25,18 +26,17 @@ impl GameOfLife {
 
         for x in 0..self.width {
             for y in 0..self.height {
-                let population: u8 = {
-                    self.cells.get_neighbors(x, y)
-                        .into_iter()
-                        .map(|c| c.alive as u8)
-                        .sum()
-                };
+                let neighbors = self.cells.get_neighbors(x, y);
+                let parents: Vec<&Cell> = neighbors.iter().filter(|c| c.alive).map(|c| *c).collect();
+                let population = parents.len();
 
                 let cell = &mut self.cells.get(x, y).unwrap();
                 if cell.alive && (population < 2 || population > 3) {
                     new_cells.get_mut(x, y).unwrap().alive = false;
                 } else if !cell.alive && population == 3 {
-                    new_cells.get_mut(x, y).unwrap().alive = true;
+                    let new_cell = new_cells.get_mut(x, y).unwrap();
+                    new_cell.alive = true;
+                    new_cell.inherit_from(&parents[..]);
                 }
             }
         }
@@ -57,7 +57,7 @@ impl GameOfLife {
         let mut rng = rand::thread_rng();
         for x in 0..self.width {
             for y in 0..self.height {
-                self.cells.get_mut(x, y).unwrap().alive = rng.gen::<f64>() < 0.4;
+                self.cells.cells[x][y] = rng.gen();
             }
         }
     }
@@ -72,14 +72,55 @@ impl GameOfLife {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Team {
+    Red,
+    Blue,
+    Neutral,
+}
+
 #[derive(Clone, Debug)]
 pub struct Cell {
     pub alive: bool,
+    pub team: Team,
 }
 
 impl Cell {
     fn new() -> Cell {
-        Cell { alive: false }
+        Cell {
+            alive: false,
+            team: Team::Neutral,
+        }
+    }
+
+    fn inherit_from(&mut self, parents: &[&Cell]) {
+        let mut counts: HashMap<Team, u8> = HashMap::new();
+        counts.insert(Team::Red, 0);
+        counts.insert(Team::Blue, 0);
+        counts.insert(Team::Neutral, 0);
+
+        for p in parents {
+            *counts.entry(p.team).or_insert(0) += 1;
+        }
+
+        self.team = match (counts[&Team::Red], counts[&Team::Blue], counts[&Team::Neutral]) {
+            (r, _, n) if r == 1 && n == 2 => Team::Red,
+            (r, _, n) if r == 2 && n == 1 => Team::Red,
+            (r, _, _) if r == 3 => Team::Red,
+            (_, b, n) if b == 1 && n == 2 => Team::Blue,
+            (_, b, n) if b == 2 && n == 1 => Team::Blue,
+            (_, b, _) if b == 3 => Team::Blue,
+            _ => Team::Neutral,
+        };
+    }
+}
+
+impl Rand for Cell {
+    fn rand<R: Rng>(rng: &mut R) -> Self {
+        Cell {
+            alive: rng.gen::<f32>() < 0.4,
+            team: *rng.choose(&[Team::Red, Team::Blue]).unwrap(),
+        }
     }
 }
 
