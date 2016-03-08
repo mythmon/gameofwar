@@ -43,7 +43,7 @@ impl App {
         const DEAD: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
         const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
-        let size = 10.0;
+        let size = 6.0;
         let square = graphics::rectangle::square(0.0, 0.0, size);
         let cells = self.game.cells.iter();
 
